@@ -20,9 +20,9 @@ API_BASE_URL = "http://localhost:8547/api/ConsumerApi/v1/Restaurant/TheHungryUni
 API_BEARER_TOKEN = os.getenv("API_BEARER_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6ImFwcGVsbGErYXBpQHJlc2RpYXJ5LmNvbSIsIm5iZiI6MTc1NDQzMDgwNSwiZXhwIjoxNzU0NTE3MjA1LCJpYXQiOjE3NTQ0MzA4MDUsImlzcyI6IlNlbGYiLCJhdWQiOiJodHRwczovL2FwaS5yZXNkaWFyeS5jb20ifQ.g3yLsufdk8Fn2094SB3J3XW-KdBc0DY9a2Jiu_56ud8")
 
 # --- API Functions ---
+# (These are all unchanged)
 
 def check_restaurant_availability(date: str, party_size: int):
-    """Calls the mock API to check for available time slots."""
     endpoint = f"{API_BASE_URL}/AvailabilitySearch"
     headers = {"Authorization": f"Bearer {API_BEARER_TOKEN}"}
     data = {"VisitDate": date, "PartySize": party_size, "ChannelCode": "ONLINE"}
@@ -34,7 +34,6 @@ def check_restaurant_availability(date: str, party_size: int):
         return {"error": str(e)}
 
 def create_new_booking(date: str, time: str, party_size: int):
-    """Calls the mock API to create a new booking."""
     endpoint = f"{API_BASE_URL}/BookingWithStripeToken"
     headers = {"Authorization": f"Bearer {API_BEARER_TOKEN}"}
     data = {
@@ -50,7 +49,6 @@ def create_new_booking(date: str, time: str, party_size: int):
         return {"error": str(e)}
 
 def get_booking_details(booking_reference: str):
-    """Calls the mock API to get details for an existing booking."""
     endpoint = f"{API_BASE_URL}/Booking/{booking_reference}"
     headers = {"Authorization": f"Bearer {API_BEARER_TOKEN}"}
     try:
@@ -63,7 +61,6 @@ def get_booking_details(booking_reference: str):
         return {"error": str(e)}
 
 def update_booking(booking_reference: str, updates: dict):
-    """Calls the mock API to update an existing booking."""
     endpoint = f"{API_BASE_URL}/Booking/{booking_reference}"
     headers = {"Authorization": f"Bearer {API_BEARER_TOKEN}"}
     data = {key: value for key, value in updates.items() if value is not None}
@@ -75,11 +72,10 @@ def update_booking(booking_reference: str, updates: dict):
         return {"error": str(e)}
 
 def cancel_booking(booking_reference: str):
-    """Calls the mock API to cancel an existing booking."""
     endpoint = f"{API_BASE_URL}/Booking/{booking_reference}/Cancel"
     headers = {"Authorization": f"Bearer {API_BEARER_TOKEN}"}
     data = {
-        "cancellationReasonId": 1, # 1 = Customer Request
+        "cancellationReasonId": 1, 
         "micrositeName": "TheHungryUnicorn",
         "bookingReference": booking_reference
     }
@@ -91,9 +87,9 @@ def cancel_booking(booking_reference: str):
         return {"error": str(e)}
 
 # --- NLU Function ---
+# (This is unchanged)
 
 def get_intent_and_entities(prompt: str):
-    """Uses Gemini to extract intent and entities from the user's prompt."""
     system_prompt = f"""
     You are an NLU (Natural Language Understanding) engine for a restaurant booking system.
     Analyze the user's text and identify their intent and any relevant entities.
@@ -161,6 +157,7 @@ if prompt := st.chat_input("What would you like to do?"):
             response_text = "I'm not sure how to help with that. Please ask about booking a table."
 
             if intent == "check_availability":
+                # (This block is unchanged)
                 date = entities.get("date")
                 party_size = entities.get("party_size")
                 if date and party_size:
@@ -178,6 +175,7 @@ if prompt := st.chat_input("What would you like to do?"):
                     response_text = "To check availability, I need to know the date and the number of people."
             
             elif intent == "book_reservation":
+                # (This block is unchanged)
                 date = st.session_state.context.get("date")
                 party_size = st.session_state.context.get("party_size")
                 time = entities.get("time")
@@ -197,6 +195,8 @@ if prompt := st.chat_input("What would you like to do?"):
                 if booking_ref:
                     details = get_booking_details(booking_ref)
                     if details and not details.get("error"):
+                        # **CHANGE 1: Save the booking reference to context**
+                        st.session_state.context = {"booking_reference": booking_ref}
                         booking_status = details.get("status")
                         if booking_status == "cancelled":
                             response_text = f"I found a booking with the reference **{booking_ref}**, but it has already been cancelled."
@@ -208,7 +208,8 @@ if prompt := st.chat_input("What would you like to do?"):
                     response_text = "I can help with that. What is your booking reference number?"
 
             elif intent == "modify_booking":
-                booking_ref = entities.get("booking_reference")
+                # **CHANGE 2: Use context if booking_ref isn't in the prompt**
+                booking_ref = entities.get("booking_reference") or st.session_state.context.get("booking_reference")
                 if booking_ref:
                     updates = {
                         "VisitDate": entities.get("date"),
@@ -218,17 +219,20 @@ if prompt := st.chat_input("What would you like to do?"):
                     update_result = update_booking(booking_ref, updates)
                     if update_result and not update_result.get("error"):
                         response_text = f"Your booking **{booking_ref}** has been successfully updated."
+                        st.session_state.context = {} # Clear context after successful modification
                     else:
                         response_text = f"Sorry, I was unable to update booking **{booking_ref}**."
                 else:
                     response_text = "I can help with that, but I need your booking reference to find the reservation you want to change."
 
             elif intent == "cancel_booking":
-                booking_ref = entities.get("booking_reference")
+                # **CHANGE 3: Use context if booking_ref isn't in the prompt**
+                booking_ref = entities.get("booking_reference") or st.session_state.context.get("booking_reference")
                 if booking_ref:
                     cancel_result = cancel_booking(booking_ref)
                     if cancel_result and not cancel_result.get("error"):
                         response_text = f"Your booking **{booking_ref}** has been successfully cancelled."
+                        st.session_state.context = {} # Clear context after successful cancellation
                     else:
                         response_text = f"Sorry, I was unable to cancel booking **{booking_ref}**. Please check the reference number."
                 else:
