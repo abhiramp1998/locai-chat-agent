@@ -154,8 +154,11 @@ st.title("Restaurant Booking Agent")
 
 with st.sidebar:
     if st.button("New Chat"):
-        st.session_state.messages = []
+        # Reset the chat history to include the initial greeting
+        st.session_state.messages = [{"role": "assistant", "content": "Hello! How can I help you book a table at The HungryUnicorn?"}]
+        # Clear any stored context
         st.session_state.context = {}
+        # Rerun the app to show the changes
         st.rerun()
 
 if "messages" not in st.session_state:
