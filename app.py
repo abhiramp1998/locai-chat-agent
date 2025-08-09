@@ -6,9 +6,10 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
-# --- Configuration and Setup ---
+# Load environment variables from the .env file
 load_dotenv()
 
+# Configure the Gemini client with the API key
 try:
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
     gemini_model = genai.GenerativeModel('gemini-1.5-flash')
@@ -16,13 +17,23 @@ except Exception as e:
     st.error(f"Error configuring Gemini: Please check your GOOGLE_API_KEY in the .env file. Error: {e}")
     st.stop()
 
+# Constants for the mock API
 API_BASE_URL = "http://localhost:8547/api/ConsumerApi/v1/Restaurant/TheHungryUnicorn"
 API_BEARER_TOKEN = os.getenv("API_BEARER_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6ImFwcGVsbGErYXBpQHJlc2RpYXJ5LmNvbSIsIm5iZiI6MTc1NDQzMDgwNSwiZXhwIjoxNzU0NTE3MjA1LCJpYXQiOjE3NTQ0MzA4MDUsImlzcyI6IlNlbGYiLCJhdWQiOiJodHRwczovL2FwaS5yZXNkaWFyeS5jb20ifQ.g3yLsufdk8Fn2094SB3J3XW-KdBc0DY9a2Jiu_56ud8")
 
-# --- API Functions ---
+
+# --- Helper & API Functions ---
+
+def format_time_for_display(time_str: str) -> str:
+    """Converts 'HH:MM:SS' to 'HH:MM AM/PM' format."""
+    if not time_str: return ""
+    try:
+        t = datetime.strptime(time_str, "%H:%M:%S")
+        return t.strftime("%I:%M %p").strip()
+    except ValueError:
+        return time_str
 
 def check_restaurant_availability(date: str, party_size: int):
-    """Calls the mock API to check for available time slots."""
     endpoint = f"{API_BASE_URL}/AvailabilitySearch"
     headers = {"Authorization": f"Bearer {API_BEARER_TOKEN}"}
     data = {"VisitDate": date, "PartySize": party_size, "ChannelCode": "ONLINE"}
@@ -34,7 +45,6 @@ def check_restaurant_availability(date: str, party_size: int):
         return {"error": str(e)}
 
 def create_new_booking(date: str, time: str, party_size: int):
-    """Calls the mock API to create a new booking."""
     endpoint = f"{API_BASE_URL}/BookingWithStripeToken"
     headers = {"Authorization": f"Bearer {API_BEARER_TOKEN}"}
     data = {
@@ -50,7 +60,6 @@ def create_new_booking(date: str, time: str, party_size: int):
         return {"error": str(e)}
 
 def get_booking_details(booking_reference: str):
-    """Calls the mock API to get details for an existing booking."""
     endpoint = f"{API_BASE_URL}/Booking/{booking_reference}"
     headers = {"Authorization": f"Bearer {API_BEARER_TOKEN}"}
     try:
@@ -63,7 +72,6 @@ def get_booking_details(booking_reference: str):
         return {"error": str(e)}
 
 def update_booking(booking_reference: str, updates: dict):
-    """Calls the mock API to update an existing booking."""
     endpoint = f"{API_BASE_URL}/Booking/{booking_reference}"
     headers = {"Authorization": f"Bearer {API_BEARER_TOKEN}"}
     data = {key: value for key, value in updates.items() if value is not None}
@@ -75,7 +83,6 @@ def update_booking(booking_reference: str, updates: dict):
         return {"error": str(e)}
 
 def cancel_booking(booking_reference: str):
-    """Calls the mock API to cancel an existing booking."""
     endpoint = f"{API_BASE_URL}/Booking/{booking_reference}/Cancel"
     headers = {"Authorization": f"Bearer {API_BEARER_TOKEN}"}
     data = {
@@ -90,10 +97,7 @@ def cancel_booking(booking_reference: str):
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
 
-# --- NLU Function ---
-
 def get_intent_and_entities(prompt: str):
-    """Uses Gemini to extract intent and entities from the user's prompt."""
     system_prompt = f"""
     You are an NLU (Natural Language Understanding) engine for a restaurant booking system.
     Analyze the user's text and identify their intent and any relevant entities.
@@ -107,10 +111,11 @@ def get_intent_and_entities(prompt: str):
     - 'time': The specific time, formatted as 'HH:MM:SS'.
     - 'party_size': The number of people as an integer.
     - 'booking_reference': The booking reference code.
-    
+    - 'time_of_day': Can be 'morning', 'afternoon', or 'evening'. Infer this from context like 'tonight' or 'lunch'.
+
     Here are some examples:
-    User: "show me tables for 2 people this Friday"
-    You: {{"intent": "check_availability", "entities": {{"party_size": 2, "date": "{(datetime.now() + timedelta(days=(4 - datetime.now().weekday()) % 7)).strftime('%Y-%m-%d')}"}}}}
+    User: "show me tables for 2 people this Friday evening"
+    You: {{"intent": "check_availability", "entities": {{"party_size": 2, "date": "{(datetime.now() + timedelta(days=(4 - datetime.now().weekday()) % 7)).strftime('%Y-%m-%d')}", "time_of_day": "evening"}}}}
 
     User: "7:30pm sounds good"
     You: {{"intent": "book_reservation", "entities": {{"time": "19:30:00"}}}}
@@ -118,12 +123,13 @@ def get_intent_and_entities(prompt: str):
     User: "can you check my reservation ABC1234?"
     You: {{"intent": "check_booking", "entities": {{"booking_reference": "ABC1234"}}}}
 
-    User: "change my booking XYZ987 to 4 people"
-    You: {{"intent": "modify_booking", "entities": {{"booking_reference": "XYZ987", "party_size": 4}}}}
+    User: "change my booking XYZ987 to 4 people at 8pm"
+    You: {{"intent": "modify_booking", "entities": {{"booking_reference": "XYZ987", "party_size": 4, "time": "20:00:00"}}}}
 
     User: "please cancel booking GHI456"
     You: {{"intent": "cancel_booking", "entities": {{"booking_reference": "GHI456"}}}}
     """
+    
     full_prompt = f"{system_prompt}\nUser: \"{prompt}\"\nYou:"
     try:
         response = gemini_model.generate_content(full_prompt)
@@ -133,10 +139,17 @@ def get_intent_and_entities(prompt: str):
         print(f"Error calling Gemini: {e}")
         return {"intent": "unknown", "entities": {}}
 
+
 # --- Streamlit App ---
 
-st.set_page_config(page_title="The HungryUnicorn Bookings", page_icon="🦄")
-st.title("🦄 The HungryUnicorn Booking Agent")
+st.set_page_config(page_title="Restaurant Booking Agent")
+st.title("Restaurant Booking Agent")
+
+with st.sidebar:
+    if st.button("New Chat"):
+        st.session_state.messages = []
+        st.session_state.context = {}
+        st.rerun()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -167,9 +180,18 @@ if prompt := st.chat_input("What would you like to do?"):
                     st.session_state.context = {"date": date, "party_size": party_size}
                     availability_data = check_restaurant_availability(date=date, party_size=party_size)
                     if availability_data and not availability_data.get("error"):
-                        available_times = [slot["time"] for slot in availability_data.get("available_slots", []) if slot["available"]]
-                        if available_times:
-                            response_text = f"For a party of {party_size} on {date}, the following times are available: {', '.join(available_times)}"
+                        available_slots = [slot for slot in availability_data.get("available_slots", []) if slot["available"]]
+                        
+                        time_of_day = entities.get("time_of_day")
+                        if time_of_day == "evening":
+                            available_slots = [slot for slot in available_slots if int(slot["time"][:2]) >= 18]
+                        elif time_of_day == "afternoon":
+                            available_slots = [slot for slot in available_slots if 12 <= int(slot["time"][:2]) < 18]
+                        
+                        display_times = [format_time_for_display(slot["time"]) for slot in available_slots]
+
+                        if display_times:
+                            response_text = f"For a party of {party_size} on {date}, the following times are available: {', '.join(display_times)}"
                         else:
                             response_text = f"Sorry, no tables are available for that party size on {date}."
                     else:
@@ -202,7 +224,10 @@ if prompt := st.chat_input("What would you like to do?"):
                         if booking_status == "cancelled":
                             response_text = f"I found a booking with the reference **{booking_ref}**, but it has already been cancelled."
                         else:
-                            response_text = f"I found your booking. It's for **{details.get('party_size')} people** on **{details.get('visit_date')}** at **{details.get('visit_time')}**."
+                            party = details.get('party_size')
+                            visit_date = details.get('visit_date')
+                            visit_time = format_time_for_display(details.get('visit_time'))
+                            response_text = f"I found your booking. It's for **{party} people** on **{visit_date}** at **{visit_time}**."
                     else:
                         response_text = f"I couldn't find a booking with the reference **{booking_ref}**. Please double-check the reference number."
                 else:
@@ -210,34 +235,51 @@ if prompt := st.chat_input("What would you like to do?"):
 
             elif intent == "modify_booking":
                 booking_ref = entities.get("booking_reference") or st.session_state.context.get("booking_reference")
-                new_party_size = entities.get("party_size")
+                updates_from_user = {
+                    "VisitDate": entities.get("date"),
+                    "VisitTime": entities.get("time"),
+                    "PartySize": entities.get("party_size")
+                }
+                updates = {key: value for key, value in updates_from_user.items() if value is not None}
 
-                if booking_ref and new_party_size:
+                if booking_ref and updates:
                     original_details = get_booking_details(booking_ref)
                     if original_details and not original_details.get("error"):
-                        visit_date = original_details.get("visit_date")
-                        visit_time = original_details.get("visit_time")
                         
-                        availability_data = check_restaurant_availability(date=visit_date, party_size=1)
-                        
-                        if availability_data and not availability_data.get("error"):
-                            slot_info = next((slot for slot in availability_data.get("available_slots", []) if slot["time"] == visit_time), None)
+                        # If party size is being changed, we must validate it first
+                        new_party_size = updates.get("PartySize")
+                        if new_party_size:
+                            visit_date = updates.get("VisitDate") or original_details.get("visit_date")
+                            visit_time = updates.get("VisitTime") or original_details.get("visit_time")
+                            
+                            availability_data = check_restaurant_availability(date=visit_date, party_size=1)
+                            slot_info = next((s for s in availability_data.get("available_slots", []) if s["time"] == visit_time), None)
                             
                             if slot_info:
                                 max_size = slot_info.get("max_party_size", 0)
-                                if new_party_size <= max_size:
-                                    update_result = update_booking(booking_ref, {"PartySize": new_party_size})
-                                    if update_result and not update_result.get("error"):
-                                        response_text = f"Your booking **{booking_ref}** has been successfully updated to a party of {new_party_size}."
-                                        st.session_state.context = {} 
-                                    else:
-                                        response_text = f"Sorry, I was unable to update booking **{booking_ref}** at this time."
-                                else:
+                                if new_party_size > max_size:
                                     response_text = f"I'm sorry, but we cannot accommodate a party of {new_party_size} at that time. The maximum for that slot is {max_size}."
+                                    # This is a validation failure, so we stop here
+                                    st.markdown(response_text)
+                                    st.session_state.messages.append({"role": "assistant", "content": response_text})
+                                    st.stop() # Stop the script run
                             else:
-                                response_text = "Sorry, I couldn't find the original time slot to verify the party size."
+                                response_text = "Sorry, I couldn't find the original time slot to verify the new party size."
+                                st.markdown(response_text)
+                                st.session_state.messages.append({"role": "assistant", "content": response_text})
+                                st.stop() # Stop the script run
+
+                        # If validation passes (or wasn't needed), proceed with the update
+                        update_result = update_booking(booking_ref, updates)
+                        if update_result and not update_result.get("error"):
+                            update_fragments = []
+                            if "VisitDate" in updates: update_fragments.append(f"date to {updates['VisitDate']}")
+                            if "VisitTime" in updates: update_fragments.append(f"time to {format_time_for_display(updates['VisitTime'])}")
+                            if "PartySize" in updates: update_fragments.append(f"party size to {updates['PartySize']}")
+                            response_text = f"Your booking **{booking_ref}** has been successfully updated: " + ", ".join(update_fragments) + "."
+                            st.session_state.context = {}
                         else:
-                            response_text = "Sorry, I couldn't verify availability for the new party size."
+                            response_text = f"Sorry, I was unable to update booking **{booking_ref}** with those details."
                     else:
                         response_text = f"I couldn't find the booking **{booking_ref}** to modify it."
                 else:
