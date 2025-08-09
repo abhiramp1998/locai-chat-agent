@@ -44,7 +44,7 @@ First, set up and run the provided backend server.
 
 ```bash
 # Clone the server repository
-git clone [https://github.com/AppellaAl/Restaurant-Booking-Mock-API-Server.git](https://github.com/AppellaAl/Restaurant-Booking-Mock-API-Server.git)
+git clone [https://github.com/AppellaAl/Restaurant-Booking-Mock-API-Server.git])
 
 # Navigate into the server directory
 cd Restaurant-Booking-Mock-API-Server
@@ -64,7 +64,7 @@ In a **new terminal window**, set up and run this Streamlit application.
 
 ```bash
 # Clone this repository
-git clone [https://github.com/your-username/locai-chat-agent.git](https://github.com/your-username/locai-chat-agent.git)
+git clone [https://github.com/abhiramp1998/locai-chat-agent]
 
 # Navigate into the agent directory
 cd locai-chat-agent
