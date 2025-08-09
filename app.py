@@ -9,12 +9,19 @@ from datetime import datetime, timedelta
 # Load environment variables from the .env file
 load_dotenv()
 
-# Configure the Gemini client with the API key
+# --- Configuration and Setup ---
+
+# Configure the Gemini client with the API key, with a friendly error if not found
+API_KEY = os.getenv("GOOGLE_API_KEY")
+if not API_KEY:
+    st.error("Google Gemini API key not found. Please add your key to a .env file.")
+    st.stop()
+
 try:
-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+    genai.configure(api_key=API_KEY)
     gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
-    st.error(f"Error configuring Gemini: Please check your GOOGLE_API_KEY in the .env file. Error: {e}")
+    st.error(f"Error configuring Gemini: {e}")
     st.stop()
 
 # Constants for the mock API
@@ -246,7 +253,6 @@ if prompt := st.chat_input("What would you like to do?"):
                     original_details = get_booking_details(booking_ref)
                     if original_details and not original_details.get("error"):
                         
-                        # If party size is being changed, we must validate it first
                         new_party_size = updates.get("PartySize")
                         if new_party_size:
                             visit_date = updates.get("VisitDate") or original_details.get("visit_date")
@@ -259,17 +265,15 @@ if prompt := st.chat_input("What would you like to do?"):
                                 max_size = slot_info.get("max_party_size", 0)
                                 if new_party_size > max_size:
                                     response_text = f"I'm sorry, but we cannot accommodate a party of {new_party_size} at that time. The maximum for that slot is {max_size}."
-                                    # This is a validation failure, so we stop here
                                     st.markdown(response_text)
                                     st.session_state.messages.append({"role": "assistant", "content": response_text})
-                                    st.stop() # Stop the script run
+                                    st.stop()
                             else:
                                 response_text = "Sorry, I couldn't find the original time slot to verify the new party size."
                                 st.markdown(response_text)
                                 st.session_state.messages.append({"role": "assistant", "content": response_text})
-                                st.stop() # Stop the script run
+                                st.stop()
 
-                        # If validation passes (or wasn't needed), proceed with the update
                         update_result = update_booking(booking_ref, updates)
                         if update_result and not update_result.get("error"):
                             update_fragments = []
